@@ -10,16 +10,8 @@ const cron = require('node-cron');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-const allowedOrigins = ['https://ssc-signature-formatter.vercel.app'];
-
 app.use(cors({
-    origin: function (origin, callback) {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    }
+    origin: 'https://ssc-signature-formatter.vercel.app'
 }));
 
 const cmToPixels = (cm) => Math.round(cm * 37.7952755906); // 37.7952755906 pixels per cm
@@ -177,3 +169,6 @@ cron.schedule('*/15 * * * *', () => {
 app.listen(5000, () => {
     console.log('Server is running on port 5000');
 });
+
+
+    

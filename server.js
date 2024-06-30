@@ -11,7 +11,8 @@ const app = express();
 const upload = multer({ dest: 'uploads/' });
 
 app.use(cors({
-    origin: 'https://ssc-signature-formatter.vercel.app'
+    origin: 'https://ssc-signature-formatter.vercel.app/',
+    
 }));
 
 const cmToPixels = (cm) => Math.round(cm * 37.7952755906); // 37.7952755906 pixels per cm

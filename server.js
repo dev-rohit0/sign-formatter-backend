@@ -10,12 +10,25 @@ const cron = require('node-cron');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
+// Define directories for temporary and output files
+const tempDir = path.join(process.cwd(), 'temp');
+const outputDir = path.join(process.cwd(), 'output');
+
+// Ensure directories exist
+if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir);
+}
+
+if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir);
+}
+
 app.use(cors({
-    origin: 'https://ssc-signature-formatter.vercel.app', // use your actual domain name (or localhost), using * is not recommended
+    origin: 'https://ssc-signature-formatter.vercel.app', // Use your actual domain name (or localhost), using * is not recommended
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Origin', 'X-Requested-With', 'Accept', 'x-client-key', 'x-client-token', 'x-client-secret', 'Authorization'],
     credentials: true
-}))
+}));
 
 const cmToPixels = (cm) => Math.round(cm * 37.7952755906); // 37.7952755906 pixels per cm
 
@@ -51,8 +64,8 @@ const cleanUpFiles = (files) => {
 
 app.post('/upload', upload.single('file'), async (req, res) => {
     const filePath = req.file.path;
-    const tempFilePath = path.join(__dirname, 'temp', `temp_signature_${uuidv4()}.jpg`);
-    const outputFilePath = path.join(__dirname, 'output', `formatted_signature_${uuidv4()}.jpg`);
+    const tempFilePath = path.join(tempDir, `temp_signature_${uuidv4()}.jpg`);
+    const outputFilePath = path.join(outputDir, `formatted_signature_${uuidv4()}.jpg`);
     let quality = 85;
     const minSize = 10 * 1024; // 10 KB
     const maxSize = 20 * 1024; // 20 KB
@@ -75,7 +88,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
                 .toFile(tempFilePath);
 
             do {
-                const intermediateFilePath = path.join(__dirname, 'temp', `intermediate_signature_${uuidv4()}.jpg`);
+                const intermediateFilePath = path.join(tempDir, `intermediate_signature_${uuidv4()}.jpg`);
 
                 await sharp(tempFilePath)
                     .jpeg({ quality })
@@ -101,7 +114,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
             if (fileSize < minSize) {
                 let upscaleFactor = 1.1; // Start with a 10% increase
                 do {
-                    const upscaledFilePath = path.join(__dirname, 'output', `upscaled_signature_${uuidv4()}.jpg`);
+                    const upscaledFilePath = path.join(outputDir, `upscaled_signature_${uuidv4()}.jpg`);
                     await sharp(outputFilePath)
                         .resize({
                             width: Math.round(cmToPixels(4) * upscaleFactor),
@@ -164,14 +177,11 @@ cron.schedule('*/15 * * * *', () => {
         });
     };
 
-    deleteOldFiles(path.join(__dirname, 'uploads'));
-    deleteOldFiles(path.join(__dirname, 'temp'));
-    deleteOldFiles(path.join(__dirname, 'output'));
+    deleteOldFiles(path.join(process.cwd(), 'uploads'));
+    deleteOldFiles(tempDir);
+    deleteOldFiles(outputDir);
 });
 
 app.listen(5000, () => {
     console.log('Server is running on port 5000');
 });
-
-
-    

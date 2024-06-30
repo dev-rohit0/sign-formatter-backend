@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
+const cron = require('node-cron');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
@@ -14,12 +15,6 @@ app.use(cors({
 }));
 
 const cmToPixels = (cm) => Math.round(cm * 37.7952755906); // 37.7952755906 pixels per cm
-
-const createDirIfNotExists = (dir) => {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-};
 
 const deleteFileWithRetry = (filePath, retries = 3, delay = 1000) => {
     if (retries < 0) {
@@ -41,56 +36,24 @@ const deleteFileWithRetry = (filePath, retries = 3, delay = 1000) => {
     }, delay);
 };
 
-const deleteOldFiles = (dir, maxAgeInMinutes) => {
-    const maxAgeInMs = maxAgeInMinutes * 60 * 1000;
-    setInterval(() => {
-        fs.readdir(dir, (err, files) => {
-            if (err) {
-                console.error(`Error reading directory ${dir}:`, err);
-                return;
+const cleanUpFiles = (files) => {
+    setTimeout(() => {
+        files.forEach(file => {
+            if (fs.existsSync(file)) {
+                deleteFileWithRetry(file);
             }
-
-            files.forEach((file) => {
-                const filePath = path.join(dir, file);
-                fs.stat(filePath, (err, stats) => {
-                    if (err) {
-                        console.error(`Error stating file ${filePath}:`, err);
-                        return;
-                    }
-
-                    if ((Date.now() - stats.mtimeMs) > maxAgeInMs) {
-                        deleteFileWithRetry(filePath);
-                    }
-                });
-            });
         });
-    }, maxAgeInMs);
+    }, 5000);
 };
-
-// Create necessary directories
-['uploads', 'temp', 'intermediate', 'output'].forEach(createDirIfNotExists);
-
-// Setup file deletion to run every 15 minutes
-['uploads', 'temp', 'intermediate', 'output'].forEach(dir => deleteOldFiles(dir, 15));
 
 app.post('/upload', upload.single('file'), async (req, res) => {
     const filePath = req.file.path;
     const tempFilePath = path.join(__dirname, 'temp', `temp_signature_${uuidv4()}.jpg`);
-    let outputFilePath = path.join(__dirname, 'output', `formatted_signature_${uuidv4()}.jpg`);
+    const outputFilePath = path.join(__dirname, 'output', `formatted_signature_${uuidv4()}.jpg`);
     let quality = 85;
     const minSize = 10 * 1024; // 10 KB
     const maxSize = 20 * 1024; // 20 KB
     let fileSize;
-
-    const cleanUpFiles = (files) => {
-        setTimeout(() => {
-            files.forEach(file => {
-                if (fs.existsSync(file)) {
-                    deleteFileWithRetry(file);
-                }
-            });
-        }, 5000);
-    };
 
     try {
         const initialStats = fs.statSync(filePath);
@@ -109,7 +72,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
                 .toFile(tempFilePath);
 
             do {
-                const intermediateFilePath = path.join(__dirname, 'intermediate', `intermediate_signature_${uuidv4()}.jpg`);
+                const intermediateFilePath = path.join(__dirname, 'temp', `intermediate_signature_${uuidv4()}.jpg`);
 
                 await sharp(tempFilePath)
                     .jpeg({ quality })
@@ -169,6 +132,43 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     }
 });
 
+// Schedule a task to delete old files in the uploads, temp, and output directories
+cron.schedule('*/15 * * * *', () => {
+    const deleteOldFiles = (dirPath) => {
+        fs.readdir(dirPath, (err, files) => {
+            if (err) {
+                console.error(`Error reading directory ${dirPath}:`, err);
+                return;
+            }
+
+            files.forEach(file => {
+                const filePath = path.join(dirPath, file);
+                fs.stat(filePath, (err, stats) => {
+                    if (err) {
+                        console.error(`Error getting stats of file ${filePath}:`, err);
+                        return;
+                    }
+
+                    const now = new Date().getTime();
+                    const fileAge = now - stats.mtime.getTime();
+                    const fifteenMinutes = 15 * 60 * 1000;
+
+                    if (fileAge > fifteenMinutes) {
+                        deleteFileWithRetry(filePath);
+                    }
+                });
+            });
+        });
+    };
+
+    deleteOldFiles(path.join(__dirname, 'uploads'));
+    deleteOldFiles(path.join(__dirname, 'temp'));
+    deleteOldFiles(path.join(__dirname, 'output'));
+});
+
 app.listen(5000, () => {
     console.log('Server is running on port 5000');
 });
+
+
+    
